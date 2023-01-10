@@ -6,6 +6,11 @@ from django.views.decorators.csrf import csrf_exempt
 
 from youtube_api.models import Youtube_search
 
+from celery import shared_task, Celery
+
+import time
+
+app = Celery('tasks',)
 
 # Create your views here.
 
@@ -19,6 +24,7 @@ def save_results(results, query):
         t.save()
     return "saved"
 
+@shared_task
 def youtube_search_api(query):
     url = 'https://www.googleapis.com/youtube/v3/search'
 
@@ -33,10 +39,13 @@ def youtube_search_api(query):
         'type': 'video'
     }
 
-    # Send the request
-    response = requests.get(url, params=params)
-    save_results(response.json(), query)
-    return response.json()
+    while True:
+        # Send the request
+        response = requests.get(url, params=params)
+        save_results(response.json(), query)
+        time.sleep(10)
+
+    return ""
 
 
 @csrf_exempt
@@ -45,10 +54,8 @@ def youtube_search(request):
 
     if request.method == "POST":
         query = request.POST.get("query")
-        # query = request.POST.query
 
     if query:
-        search_results = youtube_search_api(query)
-        # print(search_results)
+        search_results = youtube_search_api.delay(query)
 
     return HttpResponse("Search Results Saved")
